@@ -16,7 +16,7 @@ import (
 
 // Auth func
 // return gin.HandlerFunc
-func (DefaultMiddleware) Auth() gin.HandlerFunc {
+func Auth() gin.HandlerFunc {
 	return func(context *gin.Context) {
 		id, err := jwt.ExtractID(context.GetHeader("Authorization"))
 		if err != nil {
