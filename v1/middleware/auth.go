@@ -19,10 +19,11 @@ import (
 )
 
 var (
-	ErrDuplicateAcc = errors.New("Duplicate Account")
-	ErrBanned       = errors.New("Banned")
-	ErrUnderage     = errors.New("Underage")
-	ErrSuspended    = errors.New("Suspended")
+	ErrDuplicateAcc          = errors.New("Duplicate Account")
+	ErrBanned                = errors.New("Banned")
+	ErrUnderage              = errors.New("Underage")
+	ErrSuspended             = errors.New("Suspended")
+	ErrAttemptLoginSuspended = errors.New("Attempt Login Suspended")
 )
 
 type MemberStatusKey struct {
@@ -36,9 +37,10 @@ type banStatus struct {
 
 type MemberStatus struct {
 	banStatus
-	DeviceID   string     `json:"device_id,omitempty"`
-	IsOnHold   bool       `json:"is_on_hold,omitempty"`
-	SuspendEnd *time.Time `json:"suspend_end,omitempty"`
+	DeviceID     string     `json:"device_id,omitempty"`
+	IsOnHold     bool       `json:"is_on_hold,omitempty"`
+	SuspendEnd   *time.Time `json:"suspend_end,omitempty"`
+	IsMaxAttempt bool       `json:"is_max_attempt,omitempty"`
 }
 
 func GetStatus(ctx *gin.Context, es *elastic.Client, memberID int) (status MemberStatus, err error) {
