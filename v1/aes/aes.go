@@ -63,7 +63,6 @@ func Decrypt(data string) int {
 
 // DecryptBulk Function
 func DecryptBulk(data []string) (ret []int, err error) {
-	ret = make([]int, len(data))
 	for i := range data {
 		decrypted := Decrypt(data[i])
 		if decrypted <= 0 {
