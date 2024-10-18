@@ -238,10 +238,11 @@ func GetData(jsonBody []byte) (json.RawMessage, error) {
 }
 
 // PublishLog params
-// 	@context: *gin.Context
-// 	@status: int
-// 	@payload: interface
-// 	@msg: []string
+//
+//	@context: *gin.Context
+//	@status: int
+//	@payload: interface
+//	@msg: []string
 //	@return error
 func PublishLog(context *gin.Context, status int, payload interface{}, msg ...string) error {
 	requestBody, err := ioutil.ReadAll(context.Request.Body)
