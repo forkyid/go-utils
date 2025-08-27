@@ -21,6 +21,8 @@ var saltCMS string
 var minLengthCMS int
 var ErrDecryptInvalid = errors.New("decrypt failed")
 
+type ID interface{ int | int64 }
+
 func initialize() {
 	if hd != nil {
 		return
@@ -38,13 +40,13 @@ func initialize() {
 }
 
 // Encrypt encrypts the int64 id value to encrypted string id.
-func Encrypt(id int64) string {
+func Encrypt[I ID](id I) (encode string) {
 	initialize()
 	hd.Salt = salt
 	hd.MinLength = minLength
 	h, _ := hashids.NewWithData(hd)
-	encoded, _ := h.EncodeInt64([]int64{id})
-	return encoded
+	encode, _ = h.EncodeInt64([]int64{int64(id)})
+	return
 }
 
 // Decrypt decrypts the encrypted string id to int64 id.
@@ -76,7 +78,7 @@ func DecryptBulk(data []string) (ret []int64, err error) {
 }
 
 // EncryptBulk encrypts int64 id slice to encrypted string id slice.
-func EncryptBulk(data []int64) (ret []string) {
+func EncryptBulk[I ID](data []I) (ret []string) {
 	ret = make([]string, len(data))
 	for i := range data {
 		ret[i] = Encrypt(data[i])
@@ -180,13 +182,13 @@ func initializeCMS() {
 }
 
 // EncryptCMS encrypts the int64 id value to encrypted string id based on CMS AES key.
-func EncryptCMS(id int64) string {
+func EncryptCMS[I ID](id I) (encodeCMS string) {
 	initializeCMS()
 	hdCMS.Salt = saltCMS
 	hdCMS.MinLength = minLengthCMS
 	hCMS, _ := hashids.NewWithData(hdCMS)
-	encodedCMS, _ := hCMS.EncodeInt64([]int64{id})
-	return encodedCMS
+	encodeCMS, _ = hCMS.EncodeInt64([]int64{int64(id)})
+	return
 }
 
 // DecryptCMS decrypts the encrypted string id to int64 id based on CMS AES key.
