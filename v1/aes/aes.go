@@ -37,33 +37,33 @@ func initialize() {
 	minLength, _ = strconv.Atoi(minLengthStr)
 }
 
-// Encrypt encrypts the int id value to encrypted string id.
-func Encrypt(id int) string {
+// Encrypt encrypts the int64 id value to encrypted string id.
+func Encrypt(id int64) string {
 	initialize()
 	hd.Salt = salt
 	hd.MinLength = minLength
 	h, _ := hashids.NewWithData(hd)
-	encoded, _ := h.Encode([]int{id})
+	encoded, _ := h.EncodeInt64([]int64{id})
 	return encoded
 }
 
-// Decrypt decrypts the encrypted string id to int id.
-func Decrypt(data string) int {
+// Decrypt decrypts the encrypted string id to int64 id.
+func Decrypt(data string) int64 {
 	initialize()
 	hd.Salt = salt
 	hd.MinLength = minLength
 	h, _ := hashids.NewWithData(hd)
-	d, err := h.DecodeWithError(data)
+	d, err := h.DecodeInt64WithError(data)
 	if err != nil || len(d) < 1 {
 		return -1
 	}
 	return d[0]
 }
 
-// DecryptBulk decrypts encrypted string id slice to int id slice.
+// DecryptBulk decrypts encrypted string id slice to int64 id slice.
 // DecryptBulk will decrypt all encrypted string, skips invalid id, but still return an error if occured.
-func DecryptBulk(data []string) (ret []int, err error) {
-	ret = []int{}
+func DecryptBulk(data []string) (ret []int64, err error) {
+	ret = []int64{}
 	for i := range data {
 		decrypted := Decrypt(data[i])
 		if decrypted <= 0 {
@@ -75,8 +75,8 @@ func DecryptBulk(data []string) (ret []int, err error) {
 	return ret, err
 }
 
-// EncryptBulk encrypts int id slice to encrypted string id slice.
-func EncryptBulk(data []int) (ret []string) {
+// EncryptBulk encrypts int64 id slice to encrypted string id slice.
+func EncryptBulk(data []int64) (ret []string) {
 	ret = make([]string, len(data))
 	for i := range data {
 		ret[i] = Encrypt(data[i])
@@ -179,32 +179,32 @@ func initializeCMS() {
 	minLengthCMS, _ = strconv.Atoi(minLengthStrCMS)
 }
 
-// EncryptCMS encrypts the int id value to encrypted string id based on CMS AES key.
-func EncryptCMS(id int) string {
+// EncryptCMS encrypts the int64 id value to encrypted string id based on CMS AES key.
+func EncryptCMS(id int64) string {
 	initializeCMS()
 	hdCMS.Salt = saltCMS
 	hdCMS.MinLength = minLengthCMS
 	hCMS, _ := hashids.NewWithData(hdCMS)
-	encodedCMS, _ := hCMS.Encode([]int{id})
+	encodedCMS, _ := hCMS.EncodeInt64([]int64{id})
 	return encodedCMS
 }
 
-// DecryptCMS decrypts the encrypted string id to int id based on CMS AES key.
-func DecryptCMS(data string) int {
+// DecryptCMS decrypts the encrypted string id to int64 id based on CMS AES key.
+func DecryptCMS(data string) int64 {
 	initializeCMS()
 	hdCMS.Salt = saltCMS
 	hdCMS.MinLength = minLengthCMS
 	hCMS, _ := hashids.NewWithData(hdCMS)
-	decryptedCMS, err := hCMS.DecodeWithError(data)
+	decryptedCMS, err := hCMS.DecodeInt64WithError(data)
 	if err != nil || len(decryptedCMS) < 1 {
 		return -1
 	}
 	return decryptedCMS[0]
 }
 
-// DecryptCMSBulk decrypts encrypted string id slice to int id slice based on CMS AES key.
-func DecryptCMSBulk(data []string) (ret []int, err error) {
-	ret = make([]int, len(data))
+// DecryptCMSBulk decrypts encrypted string id slice to int64 id slice based on CMS AES key.
+func DecryptCMSBulk(data []string) (ret []int64, err error) {
+	ret = make([]int64, len(data))
 	for i := range data {
 		decrypted := DecryptCMS(data[i])
 		if decrypted <= 0 {
@@ -215,8 +215,8 @@ func DecryptCMSBulk(data []string) (ret []int, err error) {
 	return ret, nil
 }
 
-// EncryptCMSBulk encrypts int id slice to encrypted string id slice based on CMS AES key.
-func EncryptCMSBulk(data []int) (ret []string) {
+// EncryptCMSBulk encrypts int64 id slice to encrypted string id slice based on CMS AES key.
+func EncryptCMSBulk(data []int64) (ret []string) {
 	ret = make([]string, len(data))
 	for i := range data {
 		ret[i] = EncryptCMS(data[i])

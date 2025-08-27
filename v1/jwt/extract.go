@@ -36,7 +36,7 @@ func extractClaims(tokenStr string, skipClaimsValidation ...bool) (jwt.MapClaims
 }
 
 // ExtractID extracts only the id from JWT
-func ExtractID(ah string, skipClaimsValidation ...bool) (int, error) {
+func ExtractID(ah string, skipClaimsValidation ...bool) (int64, error) {
 	ts := strings.Replace(ah, "Bearer ", "", -1)
 	claimsMap, err := extractClaims(ts, append(skipClaimsValidation, true)[0])
 	if err != nil {
