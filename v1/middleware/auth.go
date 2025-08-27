@@ -53,7 +53,7 @@ func GetStatus(ctx *gin.Context, memberID int) (status MemberStatus, err error) 
 	}
 
 	statusKey := cache.ExternalKey("global", MemberStatusKey{
-		ID: aes.Encrypt(memberID),
+		ID: aes.Encrypt(int64(memberID)),
 	})
 
 	// TODO: update suspension checking

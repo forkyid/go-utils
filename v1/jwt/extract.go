@@ -48,7 +48,7 @@ func ExtractID(ah string, skipClaimsValidation ...bool) (int, error) {
 		return -1, fmt.Errorf("invalid ID")
 	}
 
-	return id, nil
+	return int(id), nil
 }
 
 // ExtractClient extracts only the id from JWT
