@@ -46,14 +46,14 @@ type MemberStatus struct {
 	SuspendEnd *time.Time `json:"suspend_end,omitempty"`
 }
 
-func GetStatus(ctx *gin.Context, memberID int64) (status MemberStatus, err error) {
+func GetStatus(ctx *gin.Context, memberID int) (status MemberStatus, err error) {
 	isAlive := cache.IsCacheConnected()
 	if !isAlive {
 		logger.Warnf("redis", ErrConnectionFailed)
 	}
 
 	statusKey := cache.ExternalKey("global", MemberStatusKey{
-		ID: aes.Encrypt(memberID),
+		ID: aes.Encrypt(int64(memberID)),
 	})
 
 	// TODO: update suspension checking
