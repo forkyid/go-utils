@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,13 +10,12 @@ import (
 	"time"
 
 	"github.com/forkyid/go-utils/v1/aes"
-	"github.com/forkyid/go-utils/v1/cache"
 	"github.com/forkyid/go-utils/v1/jwt"
 	"github.com/forkyid/go-utils/v1/logger"
 	"github.com/forkyid/go-utils/v1/rest"
 	"github.com/forkyid/go-utils/v1/util/age"
+	"github.com/forkyid/go-utils/v1/util/auth"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis"
 	"github.com/pkg/errors"
 )
 
@@ -35,80 +33,124 @@ type MemberStatusKey struct {
 	ID string `cache:"key"`
 }
 
-type banStatus struct {
-	IsBanned bool   `json:"is_banned"`
-	TypeName string `json:"type_name,omitempty"`
+type BanStatus struct {
+	IsBanned  bool   `json:"is_banned"`
+	EncTypeID string `json:"type_id,omitempty"`
+	TypeName  string `json:"type_name,omitempty"`
+}
+
+func getBanStatus(ctx *gin.Context, encMemberID string) (status BanStatus, err error) {
+	reqBody := map[string]string{
+		"member_id": encMemberID,
+	}
+	reqBodyJson, _ := json.Marshal(reqBody)
+
+	apiUsername := os.Getenv("BASIC_AUTH_API_REPORT_USERNAME")
+	apiPassword := os.Getenv("BASIC_AUTH_API_REPORT_PASSWORD")
+	req := rest.Request{
+		URL:    fmt.Sprintf("%v/report/v1/resource/bans/status", os.Getenv("API_ORIGIN_URL")),
+		Method: http.MethodPost,
+		Headers: map[string]string{
+			"Authorization": auth.GenerateBasicAuth(apiUsername, apiPassword),
+			"X-Api-Caller":  os.Getenv("SERVICE_NAME") + ctx.Request.URL.Path,
+		},
+		Body: strings.NewReader(string(reqBodyJson)),
+	}
+
+	body, code := req.Send()
+	if code != http.StatusOK {
+		err = fmt.Errorf("[%v] %v: %v", req.Method, req.URL, string(body))
+		return
+	}
+
+	data, err := rest.GetData(body)
+	if err != nil {
+		err = errors.Wrap(err, "get data")
+		return
+	}
+
+	err = json.Unmarshal(data, &status)
+	return
+}
+
+type SuspendStatus struct {
+	ExpiresIn string    `json:"expires_in"`
+	ExpiredAt time.Time `json:"expired_at"`
+}
+
+func getSuspendStatus(ctx *gin.Context, encMemberID string) (resp SuspendStatus, err error) {
+	reqBody := map[string]interface{}{
+		"member_id": encMemberID,
+	}
+	reqBodyJson, _ := json.Marshal(reqBody)
+
+	apiUsername := os.Getenv("BASIC_AUTH_API_REPORT_USERNAME")
+	apiPassword := os.Getenv("BASIC_AUTH_API_REPORT_PASSWORD")
+	req := rest.Request{
+		URL:    fmt.Sprintf("%v/report/v1/resource/suspensions", os.Getenv("API_ORIGIN_URL")),
+		Method: http.MethodPost,
+		Body:   bytes.NewReader(reqBodyJson),
+		Headers: map[string]string{
+			"Authorization": auth.GenerateBasicAuth(apiUsername, apiPassword),
+			"X-Api-Caller":  os.Getenv("SERVICE_NAME") + ctx.Request.URL.Path,
+		},
+	}
+
+	respJson, code := req.Send()
+	if code != http.StatusOK {
+		err = fmt.Errorf("[%v] %v: %v\n%v", req.Method, req.URL, code, string(respJson))
+		return
+	}
+
+	rawData, err := rest.GetData(respJson)
+	if err != nil {
+		err = errors.Wrap(err, "go-utils: rest: GetData")
+		return
+	}
+
+	err = errors.Wrap(json.Unmarshal(rawData, &resp), "json: Unmarshal")
+
+	return
 }
 
 type MemberStatus struct {
-	banStatus
-	DeviceID   string     `json:"device_id,omitempty"`
-	SuspendEnd *time.Time `json:"suspend_end,omitempty"`
+	DeviceID      string        `json:"device_id,omitempty"`
+	BanStatus     BanStatus     `json:"ban_status"`
+	SuspendStatus SuspendStatus `json:"suspend_status"`
 }
 
-func GetStatus(ctx *gin.Context, memberID int) (status MemberStatus, err error) {
-	isAlive := cache.IsCacheConnected()
-	if !isAlive {
-		logger.Warnf("redis", ErrConnectionFailed)
-	}
-
-	statusKey := cache.ExternalKey("global", MemberStatusKey{
-		ID: aes.Encrypt(memberID),
-	})
-
-	// TODO: update suspension checking
-	if isAlive {
-		err = cache.GetUnmarshal(statusKey, &status)
-		if err == nil {
-			if status.SuspendEnd != nil && status.SuspendEnd.After(time.Now().Add(10*time.Minute)) {
-				suspendEnd := time.Until(*status.SuspendEnd)
-				cache.SetExpire(statusKey, int(suspendEnd.Seconds()))
-			} else {
-				cache.SetExpire(statusKey, 600)
-			}
-			return
-		}
-		if err != redis.Nil {
-			logger.Warnf("redis: get unmarshal", err)
-		}
-	}
-
-	status.banStatus, err = getBanStatus(ctx)
+func GetStatus(ctx *gin.Context, encMemberID string) (status MemberStatus, err error) {
+	status.BanStatus, err = getBanStatus(ctx, encMemberID)
 	if err != nil {
 		err = errors.Wrap(err, "get ban status")
 		return
 	}
 
-	if isAlive {
-		err = cache.SetJSON(statusKey, status, 600)
-		if err != nil {
-			logger.Warnf("redis: set", err)
-		}
+	status.SuspendStatus, err = getSuspendStatus(ctx, encMemberID)
+	if err != nil {
+		err = errors.Wrap(err, "get suspend status")
+		return
 	}
 
 	return
 }
 
-func tokenBasicAuth(username, password string) string {
-	auth := username + ":" + password
-	return base64.StdEncoding.EncodeToString([]byte(auth))
-}
-
-func checkAuthToken(bearerToken string) (resp rest.Response, err error) {
+func checkAuthToken(ctx *gin.Context, bearerToken string) (resp rest.Response, err error) {
 	bearerToken = strings.Replace(bearerToken, "Bearer ", "", -1)
-
-	oauthUsername := os.Getenv("OAUTH2_SERVER_BASIC_AUTH_USERNAME") // TODO: update env naming to `BASIC_AUTH_OAUTH2_SERVER_USERNAME`
-	oauthPassword := os.Getenv("OAUTH2_SERVER_BASIC_AUTH_PASSWORD") // TODO: update env naming to `BASIC_AUTH_OAUTH2_SERVER_PASSWORD`
-	basicAuth := tokenBasicAuth(oauthUsername, oauthPassword)
 
 	payload := map[string]string{"access_token": bearerToken}
 	payloadJson, _ := json.Marshal(payload)
+
+	apiUsername := os.Getenv("BASIC_AUTH_OAUTH2_SERVER_USERNAME")
+	apiPassword := os.Getenv("BASIC_AUTH_OAUTH2_SERVER_PASSWORD")
 
 	req := rest.Request{
 		URL:    fmt.Sprintf("%v/oauth/v1/resource/check/token", os.Getenv("API_ORIGIN_URL")), // TODO: update path using internal LB
 		Method: http.MethodPost,
 		Headers: map[string]string{
-			"Authorization": "Basic " + basicAuth},
+			"Authorization": auth.GenerateBasicAuth(apiUsername, apiPassword),
+			"X-Api-Caller":  os.Getenv("SERVICE_NAME") + ctx.Request.URL.Path,
+		},
 		Body: bytes.NewReader(payloadJson),
 	}
 
@@ -119,7 +161,7 @@ func checkAuthToken(bearerToken string) (resp rest.Response, err error) {
 	return
 }
 
-func (mid *Middleware) validate(auth string, ctx *gin.Context) {
+func (mid *Middleware) validate(ctx *gin.Context, auth string) {
 	id, err := jwt.ExtractID(auth)
 	if err != nil {
 		rest.ResponseMessage(ctx, http.StatusUnauthorized).
@@ -128,7 +170,7 @@ func (mid *Middleware) validate(auth string, ctx *gin.Context) {
 		return
 	}
 
-	resp, err := checkAuthToken(auth)
+	resp, err := checkAuthToken(ctx, auth)
 	if err != nil {
 		rest.ResponseMessage(ctx, http.StatusInternalServerError).Log("check auth token", err)
 		ctx.Abort()
@@ -141,15 +183,16 @@ func (mid *Middleware) validate(auth string, ctx *gin.Context) {
 		return
 	}
 
-	status, err := GetStatus(ctx, id)
+	encMemberID := aes.Encrypt(id)
+	status, err := GetStatus(ctx, encMemberID)
 	if err != nil {
 		rest.ResponseMessage(ctx, http.StatusInternalServerError).Log("get status", err)
 		ctx.Abort()
 		return
 	}
 
-	if status.IsBanned {
-		if status.TypeName == "underage" {
+	if status.BanStatus.IsBanned {
+		if status.BanStatus.TypeName == "underage" {
 			rest.ResponseMessage(ctx, http.StatusForbidden, ErrUnderage.Error())
 		} else {
 			rest.ResponseMessage(ctx, http.StatusForbidden, ErrBanned.Error())
@@ -158,7 +201,7 @@ func (mid *Middleware) validate(auth string, ctx *gin.Context) {
 		return
 	}
 
-	if status.SuspendEnd != nil && status.SuspendEnd.After(time.Now()) {
+	if !status.SuspendStatus.ExpiredAt.IsZero() && status.SuspendStatus.ExpiredAt.After(time.Now()) {
 		rest.ResponseMessage(ctx, http.StatusLocked, ErrSuspended.Error())
 		ctx.Abort()
 		return
@@ -179,7 +222,7 @@ func (mid *Middleware) GuestAuth(ctx *gin.Context) {
 		return
 	}
 
-	mid.validate(auth, ctx)
+	mid.validate(ctx, auth)
 	ctx.Next()
 }
 
@@ -192,7 +235,7 @@ func (mid *Middleware) Auth(ctx *gin.Context) {
 		return
 	}
 
-	mid.validate(auth, ctx)
+	mid.validate(ctx, auth)
 	ctx.Next()
 }
 
@@ -207,7 +250,7 @@ func (mid *Middleware) AgeAuth(minAge int) gin.HandlerFunc {
 			return
 		}
 
-		mid.validate(auth, ctx)
+		mid.validate(ctx, auth)
 		if ctx.IsAborted() {
 			return
 		}
@@ -219,30 +262,6 @@ func (mid *Middleware) AgeAuth(minAge int) gin.HandlerFunc {
 			return
 		}
 	}
-}
-
-func getBanStatus(ctx *gin.Context) (status banStatus, err error) {
-	req := rest.Request{
-		URL:    fmt.Sprintf("%v/report/v1/bans", os.Getenv("API_ORIGIN_URL")),
-		Method: http.MethodGet,
-		Headers: map[string]string{
-			"Authorization": ctx.GetHeader("Authorization")},
-	}
-
-	body, code := req.Send()
-	if code != http.StatusOK {
-		err = fmt.Errorf("[%v] %v: %v", req.Method, req.URL, string(body))
-		return
-	}
-
-	data, err := rest.GetData(body)
-	if err != nil {
-		err = errors.Wrap(err, "get data")
-		return
-	}
-
-	err = json.Unmarshal(data, &status)
-	return
 }
 
 func getAccStatus(ctx *gin.Context) (isOnHold bool, err error) {
