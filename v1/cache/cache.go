@@ -11,10 +11,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Get params
-// @key: string
-// return interface{}, error
-func Get(key string, seconds ...int) (interface{}, error) {
+func Get(key string, dur ...time.Duration) (interface{}, error) {
 	if !IsCacheConnected() {
 		return nil, fmt.Errorf("redis connect failed: %s", os.Getenv("REDIS_HOST"))
 	}
@@ -36,18 +33,14 @@ func Get(key string, seconds ...int) (interface{}, error) {
 		return nil, errors.Wrap(err, "unmarshal")
 	}
 
-	if len(seconds) == 1 {
-		go SetExpire(key, seconds[0])
+	if len(dur) == 1 {
+		go SetExpire(key, dur[0])
 	}
 
 	return data, nil
 }
 
-// GetUnmarshal params
-// @key: string
-// @target: interface{}
-// return error
-func GetUnmarshal(key string, target interface{}, seconds ...int) error {
+func GetUnmarshal(key string, target interface{}, dur ...time.Duration) error {
 	if reflect.ValueOf(target).Kind() != reflect.Ptr {
 		fmt.Println("unmarshal target is not a pointer")
 	}
@@ -71,19 +64,14 @@ func GetUnmarshal(key string, target interface{}, seconds ...int) error {
 		return errors.Wrap(err, "unmarshal")
 	}
 
-	if len(seconds) == 1 {
-		go SetExpire(key, seconds[0])
+	if len(dur) == 1 {
+		go SetExpire(key, dur[0])
 	}
 
 	return nil
 }
 
-// SetJSON params
-// @key: string
-// @value: interface{}
-// @seconds: int
-// return error
-func SetJSON(key string, value interface{}, seconds int) error {
+func SetJSON(key string, value interface{}, dur time.Duration) error {
 	if !IsCacheConnected() {
 		return fmt.Errorf("redis connect failed: %s", os.Getenv("REDIS_HOST"))
 	}
@@ -95,12 +83,9 @@ func SetJSON(key string, value interface{}, seconds int) error {
 		return errors.Wrap(err, "marshal failed")
 	}
 
-	return errors.Wrap(client.Set(key, valueJSON, time.Duration(seconds)*time.Second).Err(), "redis set failed")
+	return errors.Wrap(client.Set(key, valueJSON, dur).Err(), "redis set failed")
 }
 
-// IsCacheExists params
-// @key: string
-// return bool, error
 func IsCacheExists(key string) (bool, error) {
 	if !IsCacheConnected() {
 		return false, fmt.Errorf("redis connect failed: %s", os.Getenv("REDIS_HOST"))
@@ -115,25 +100,20 @@ func IsCacheExists(key string) (bool, error) {
 	return res.Val() != 0, nil
 }
 
-// SetExpire params
-// @key: string
-// @seconds: int
-// return error
-func SetExpire(key string, seconds int) error {
+// SetExpire set the expiration time for the key
+func SetExpire(key string, dur time.Duration) error {
 	if !IsCacheConnected() {
 		return fmt.Errorf("redis connect failed: %s", os.Getenv("REDIS_HOST"))
 	}
 	client := getRedisClient()
 
-	if err := client.Expire(key, time.Duration(seconds)*time.Second).Err(); err != nil {
+	if err := client.Expire(key, dur).Err(); err != nil {
 		return errors.Wrap(err, "set expire failed")
 	}
 	return nil
 }
 
-// Delete params
-// @key: string
-// return error
+// Delete removes keys
 func Delete(key ...string) error {
 	if !IsCacheConnected() {
 		return fmt.Errorf("redis connect failed: %s", os.Getenv("REDIS_HOST"))
@@ -173,20 +153,13 @@ func Purge(key string) error {
 	return nil
 }
 
-// TTL params
-// @key: string
-// return float64, error
-func TTL(key string) (float64, error) {
+// TTL returns the remaining time to live for a key
+func TTL(key string) (time.Duration, error) {
 	if !IsCacheConnected() {
 		return 0, fmt.Errorf("redis connect failed: %s", os.Getenv("REDIS_HOST"))
 	}
 
 	client := getRedisClient()
 
-	duration := client.TTL(key)
-	res, err := duration.Val().Seconds(), duration.Err()
-	if err != nil {
-		return 0, errors.Wrap(err, "set TTL failed")
-	}
-	return res, nil
+	return client.TTL(key).Result()
 }
