@@ -3,6 +3,7 @@ package aes
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -157,6 +158,96 @@ func DecryptStringBulk(text []string, keys ...string) []string {
 	var res []string
 	for _, t := range text {
 		dec := DecryptString(t, keys...)
+		if dec != "" {
+			res = append(res, dec)
+		}
+	}
+
+	return res
+}
+
+// EncryptStringV2 encrypt text with given key.
+// If key is blank, then use default key AES_STRING_KEY in environment.
+func EncryptStringV2(text string, keys ...string) string {
+	key := getStringKey(keys...)
+	if len(key) != 32 {
+		return ""
+	}
+
+	plaintext := []byte(text)
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return ""
+	}
+
+	iv := make([]byte, aes.BlockSize)
+	if _, err := rand.Read(iv); err != nil {
+		return ""
+	}
+
+	ciphertext := make([]byte, len(plaintext))
+	stream := cipher.NewCFBEncrypter(block, []byte(iv))
+	stream.XORKeyStream(ciphertext, plaintext)
+
+	ivCiphertext := append(iv, ciphertext...)
+
+	return base64.URLEncoding.EncodeToString(ivCiphertext)
+}
+
+// DecryptStringV2 decrypt text with given key.
+// If key is blank, then use default key AES_STRING_KEY in environment.
+func DecryptStringV2(text string, keys ...string) string {
+	key := getStringKey(keys...)
+	if len(key) != 32 {
+		return ""
+	}
+
+	data, err := base64.URLEncoding.DecodeString(text)
+	if err != nil {
+		return ""
+	}
+
+	if len(data) < aes.BlockSize {
+		return ""
+	}
+
+	iv := data[:aes.BlockSize]
+	ciphertext := data[aes.BlockSize:]
+
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return ""
+	}
+
+	plaintext := make([]byte, len(ciphertext))
+	stream := cipher.NewCFBDecrypter(block, iv)
+	stream.XORKeyStream(plaintext, ciphertext)
+
+	return string(plaintext)
+}
+
+// EncryptStringBulkV2 uses EncryptStringV2 as the base.
+// Returns encrypted string as a slice.
+// Invalid encrypted string will not be returned.
+func EncryptStringBulkV2(text []string, keys ...string) []string {
+	var res []string
+	for _, t := range text {
+		enc := EncryptStringV2(t, keys...)
+		if enc != "" {
+			res = append(res, enc)
+		}
+	}
+
+	return res
+}
+
+// DecryptStringBulkV2 uses DecryptStringV2 as the base.
+// Returns decrypted string as a slice.
+// Invalid decrypted string will not be returned.
+func DecryptStringBulkV2(text []string, keys ...string) []string {
+	var res []string
+	for _, t := range text {
+		dec := DecryptStringV2(t, keys...)
 		if dec != "" {
 			res = append(res, dec)
 		}
