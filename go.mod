@@ -1,6 +1,6 @@
 module github.com/forkyid/go-utils
 
-go 1.18
+go 1.24.0
 
 require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
@@ -45,9 +45,8 @@ require (
 	github.com/prometheus/procfs v0.6.0 // indirect
 	github.com/slok/goresilience v0.2.0 // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
-	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
-	golang.org/x/sys v0.14.0 // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
 	google.golang.org/protobuf v1.26.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
