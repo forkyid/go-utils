@@ -19,6 +19,9 @@ func NewMiddleware(
 
 type Middlewarer interface {
 	Auth(ctx *gin.Context)
+	GuestAuth(ctx *gin.Context)
+	AgeAuth(minAge int) gin.HandlerFunc
 	CORS(ctx *gin.Context)
+	CheckFeatureFlagStatus(key string)
 	CheckWaitingStatus(ctx *gin.Context)
 }

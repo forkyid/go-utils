@@ -4,9 +4,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strconv"
@@ -21,6 +21,8 @@ var hdCMS *hashids.HashIDData
 var saltCMS string
 var minLengthCMS int
 var ErrDecryptInvalid = errors.New("decrypt failed")
+
+type ID interface{ int | int64 }
 
 func initialize() {
 	if hd != nil {
@@ -38,31 +40,33 @@ func initialize() {
 	minLength, _ = strconv.Atoi(minLengthStr)
 }
 
-// Encrypt Function
-func Encrypt(id int) string {
+// Encrypt encrypts the int64 id value to encrypted string id.
+func Encrypt[I ID](id I) (encode string) {
 	initialize()
 	hd.Salt = salt
 	hd.MinLength = minLength
 	h, _ := hashids.NewWithData(hd)
-	encoded, _ := h.Encode([]int{id})
-	return encoded
+	encode, _ = h.EncodeInt64([]int64{int64(id)})
+	return
 }
 
-// Decrypt Function
-func Decrypt(data string) int {
+// Decrypt decrypts the encrypted string id to int64 id.
+func Decrypt(data string) int64 {
 	initialize()
 	hd.Salt = salt
 	hd.MinLength = minLength
 	h, _ := hashids.NewWithData(hd)
-	d, err := h.DecodeWithError(data)
+	d, err := h.DecodeInt64WithError(data)
 	if err != nil || len(d) < 1 {
 		return -1
 	}
 	return d[0]
 }
 
-// DecryptBulk Function
-func DecryptBulk(data []string) (ret []int, err error) {
+// DecryptBulk decrypts encrypted string id slice to int64 id slice.
+// DecryptBulk will decrypt all encrypted string, skips invalid id, but still return an error if occured.
+func DecryptBulk(data []string) (ret []int64, err error) {
+	ret = []int64{}
 	for i := range data {
 		decrypted := Decrypt(data[i])
 		if decrypted <= 0 {
@@ -74,8 +78,8 @@ func DecryptBulk(data []string) (ret []int, err error) {
 	return ret, err
 }
 
-// EncryptBulk Function
-func EncryptBulk(data []int) (ret []string) {
+// EncryptBulk encrypts int64 id slice to encrypted string id slice.
+func EncryptBulk[I ID](data []I) (ret []string) {
 	ret = make([]string, len(data))
 	for i := range data {
 		ret[i] = Encrypt(data[i])
@@ -83,43 +87,173 @@ func EncryptBulk(data []int) (ret []string) {
 	return ret
 }
 
-// EncryptString ...
-func EncryptString(data []byte) ([]byte, error) {
-	block, _ := aes.NewCipher([]byte(os.Getenv("AES_STRING_KEY")))
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
+func getStringKey(keys ...string) string {
+	key := os.Getenv("AES_STRING_KEY")
+	if len(keys) > 0 {
+		key = keys[0]
 	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-	ciphertext := gcm.Seal(nonce, nonce, data, nil)
-	return ciphertext, nil
+	return key
 }
 
-// DecryptString ...
-func DecryptString(data []byte) ([]byte, error) {
-	key := []byte(os.Getenv("AES_STRING_KEY"))
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	nonceSize := gcm.NonceSize()
-	if len(data) < nonceSize {
-		return nil, fmt.Errorf("invalid")
+// EncryptString encrypt text with given key.
+// If key is blank, then use default key AES_STRING_KEY in environment.
+func EncryptString(text string, keys ...string) string {
+	key := getStringKey(keys...)
+	if key == "" {
+		return ""
 	}
 
-	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	plaintext := []byte(text)
+	block, err := aes.NewCipher([]byte(key))
 	if err != nil {
-		return nil, err
+		return ""
 	}
-	return plaintext, nil
+
+	ciphertext := make([]byte, len(plaintext))
+	iv := os.Getenv("AES_IV_KEY")
+
+	stream := cipher.NewCFBEncrypter(block, []byte(iv))
+	stream.XORKeyStream(ciphertext, plaintext)
+
+	return base64.URLEncoding.EncodeToString(ciphertext)
+}
+
+// DecryptString decrypt text with given key.
+// If keys are blank, then use default key AES_STRING_KEY in environment.
+func DecryptString(text string, keys ...string) string {
+	key := getStringKey(keys...)
+
+	ciphertext, _ := base64.URLEncoding.DecodeString(text)
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return ""
+	}
+
+	iv := os.Getenv("AES_IV_KEY")
+
+	stream := cipher.NewCFBDecrypter(block, []byte(iv))
+
+	stream.XORKeyStream(ciphertext, ciphertext)
+
+	return string(ciphertext)
+}
+
+// EncryptStringBulk returns encrypted string as a slice.
+// Invalid encrypted string will not be returned.
+func EncryptStringBulk(text []string, keys ...string) []string {
+	var res []string
+	for _, t := range text {
+		enc := EncryptString(t, keys...)
+		if enc != "" {
+			res = append(res, enc)
+		}
+	}
+
+	return res
+}
+
+// DecryptStringBulk returns decrypted string as a slice.
+// Invalid decrypted string will not be returned.
+func DecryptStringBulk(text []string, keys ...string) []string {
+	var res []string
+	for _, t := range text {
+		dec := DecryptString(t, keys...)
+		if dec != "" {
+			res = append(res, dec)
+		}
+	}
+
+	return res
+}
+
+// EncryptStringV2 encrypt text with given key.
+// If key is blank, then use default key AES_STRING_KEY in environment.
+func EncryptStringV2(text string, keys ...string) string {
+	key := getStringKey(keys...)
+	if len(key) != 32 {
+		return ""
+	}
+
+	plaintext := []byte(text)
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return ""
+	}
+
+	iv := make([]byte, aes.BlockSize)
+	if _, err := rand.Read(iv); err != nil {
+		return ""
+	}
+
+	ciphertext := make([]byte, len(plaintext))
+	stream := cipher.NewCFBEncrypter(block, []byte(iv))
+	stream.XORKeyStream(ciphertext, plaintext)
+
+	ivCiphertext := append(iv, ciphertext...)
+
+	return base64.URLEncoding.EncodeToString(ivCiphertext)
+}
+
+// DecryptStringV2 decrypt text with given key.
+// If key is blank, then use default key AES_STRING_KEY in environment.
+func DecryptStringV2(text string, keys ...string) string {
+	key := getStringKey(keys...)
+	if len(key) != 32 {
+		return ""
+	}
+
+	data, err := base64.URLEncoding.DecodeString(text)
+	if err != nil {
+		return ""
+	}
+
+	if len(data) < aes.BlockSize {
+		return ""
+	}
+
+	iv := data[:aes.BlockSize]
+	ciphertext := data[aes.BlockSize:]
+
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return ""
+	}
+
+	plaintext := make([]byte, len(ciphertext))
+	stream := cipher.NewCFBDecrypter(block, iv)
+	stream.XORKeyStream(plaintext, ciphertext)
+
+	return string(plaintext)
+}
+
+// EncryptStringBulkV2 uses EncryptStringV2 as the base.
+// Returns encrypted string as a slice.
+// Invalid encrypted string will not be returned.
+func EncryptStringBulkV2(text []string, keys ...string) []string {
+	var res []string
+	for _, t := range text {
+		enc := EncryptStringV2(t, keys...)
+		if enc != "" {
+			res = append(res, enc)
+		}
+	}
+
+	return res
+}
+
+// DecryptStringBulkV2 uses DecryptStringV2 as the base.
+// Returns decrypted string as a slice.
+// Invalid decrypted string will not be returned.
+func DecryptStringBulkV2(text []string, keys ...string) []string {
+	var res []string
+	for _, t := range text {
+		dec := DecryptStringV2(t, keys...)
+		if dec != "" {
+			res = append(res, dec)
+		}
+	}
+
+	return res
 }
 
 func initializeCMS() {
@@ -138,32 +272,32 @@ func initializeCMS() {
 	minLengthCMS, _ = strconv.Atoi(minLengthStrCMS)
 }
 
-// EncryptCMS Function
-func EncryptCMS(id int) string {
+// EncryptCMS encrypts the int64 id value to encrypted string id based on CMS AES key.
+func EncryptCMS[I ID](id I) (encodeCMS string) {
 	initializeCMS()
 	hdCMS.Salt = saltCMS
 	hdCMS.MinLength = minLengthCMS
 	hCMS, _ := hashids.NewWithData(hdCMS)
-	encodedCMS, _ := hCMS.Encode([]int{id})
-	return encodedCMS
+	encodeCMS, _ = hCMS.EncodeInt64([]int64{int64(id)})
+	return
 }
 
-// DecryptCMS Function
-func DecryptCMS(data string) int {
+// DecryptCMS decrypts the encrypted string id to int64 id based on CMS AES key.
+func DecryptCMS(data string) int64 {
 	initializeCMS()
 	hdCMS.Salt = saltCMS
 	hdCMS.MinLength = minLengthCMS
 	hCMS, _ := hashids.NewWithData(hdCMS)
-	decryptedCMS, err := hCMS.DecodeWithError(data)
+	decryptedCMS, err := hCMS.DecodeInt64WithError(data)
 	if err != nil || len(decryptedCMS) < 1 {
 		return -1
 	}
 	return decryptedCMS[0]
 }
 
-// DecryptCMSBulk Function
-func DecryptCMSBulk(data []string) (ret []int, err error) {
-	ret = make([]int, len(data))
+// DecryptCMSBulk decrypts encrypted string id slice to int64 id slice based on CMS AES key.
+func DecryptCMSBulk(data []string) (ret []int64, err error) {
+	ret = make([]int64, len(data))
 	for i := range data {
 		decrypted := DecryptCMS(data[i])
 		if decrypted <= 0 {
@@ -174,8 +308,8 @@ func DecryptCMSBulk(data []string) (ret []int, err error) {
 	return ret, nil
 }
 
-// EncryptCMSBulk Function
-func EncryptCMSBulk(data []int) (ret []string) {
+// EncryptCMSBulk encrypts int64 id slice to encrypted string id slice based on CMS AES key.
+func EncryptCMSBulk(data []int64) (ret []string) {
 	ret = make([]string, len(data))
 	for i := range data {
 		ret[i] = EncryptCMS(data[i])

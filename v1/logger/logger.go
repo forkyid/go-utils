@@ -16,23 +16,32 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var logger *logrus.Logger
-var cidrs []*net.IPNet
+var (
+	logger *logrus.Logger
+	cidrs  []*net.IPNet
+
+	serverEnvironments = map[string]bool{
+		"production":  true,
+		"staging":     true,
+		"development": true,
+	}
+)
 
 const (
-	envProduction = "production"
-	tagJson       = "json"
-	tagLogIgnore  = "logignore"
+	tagJson      = "json"
+	tagLogIgnore = "logignore"
 )
 
 func init() {
 	if logger == nil {
 		logger = logrus.New()
-		logger.SetLevel(logrus.DebugLevel)
-		if os.Getenv("ENV") == envProduction {
+		env := os.Getenv("ENV")
+		if serverEnvironments[env] {
+			logger.SetLevel(logrus.ErrorLevel)
 			logger.SetFormatter(&logrus.JSONFormatter{})
 			logger.SetOutput(os.Stdout)
 		} else {
+			logger.SetLevel(logrus.DebugLevel)
 			logger.SetFormatter(&logrus.TextFormatter{
 				FullTimestamp: true,
 				ForceColors:   true,
@@ -162,30 +171,38 @@ func parseBody(v interface{}) (body map[string]string) {
 // Optional args is the binded request body struct.
 // Only the first args interface will be parsed no matter how many args are passed.
 func defineFields(ctx *gin.Context, args ...interface{}) (fields logrus.Fields) {
+	fields = logrus.Fields{
+		"ServiceName": os.Getenv("SERVICE_NAME"),
+		"Trace":       traceStack(),
+	}
+	if len(args) > 0 {
+		fields["Body"] = parseBody(args[0])
+	}
+
 	if ctx == nil {
 		return
 	}
+
+	getRequestID, ok := ctx.Get("response_id")
+	if !ok || getRequestID == "" {
+		getRequestID = uuid.GetUUID()
+	} else {
+		getRequestID = getRequestID.(string)
+	}
+	fields["Key"] = getRequestID
 
 	params := map[string]string{}
 	for _, p := range ctx.Params {
 		params[p.Key] = p.Value
 	}
-	fields = logrus.Fields{
-		"Key":         uuid.GetUUID(),
-		"ServiceName": os.Getenv("SERVICE_NAME"),
-		"Params":      params,
-		"StatusCode":  ctx.Writer.Status(),
-		"Trace":       traceStack(),
-	}
+	fields["Params"] = params
+	fields["StatusCode"] = ctx.Writer.Status()
 	req := ctx.Request
 	if req != nil {
 		fields["Request"] = req.RequestURI
 		fields["Method"] = req.Method
 		fields["IP"] = realIP(req)
 		fields["RemoteAddress"] = req.Header.Get("X-Request-Id")
-	}
-	if len(args) > 0 {
-		fields["Body"] = parseBody(args[0])
 	}
 	return
 }
@@ -206,8 +223,8 @@ func Warnf(errMsg string, err error) {
 }
 
 // Infof is used to log informational application progress.
-func Infof(errMsg string) {
-	logger.WithFields(logrus.Fields{}).Info(errMsg)
+func Infof(infoMsg string) {
+	logger.WithFields(logrus.Fields{}).Info(infoMsg)
 }
 
 // Debugf is used to log informational events for troubleshooting.

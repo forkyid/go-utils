@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -53,6 +52,11 @@ type ResponseResult struct {
 
 // Log uses current response context to log
 func (resp ResponseResult) Log(errMsg string, err error, args ...interface{}) {
+	resp.Context.Set("response_id", resp.UUID)
+	if args == nil || (len(args) > 0 && args[0] == nil) { // send nil interface if no value
+		logger.Errorf(resp.Context, errMsg, err, nil)
+		return
+	}
 	logger.Errorf(resp.Context, errMsg, err, args)
 }
 
@@ -233,13 +237,13 @@ func GetData(jsonBody []byte) (json.RawMessage, error) {
 }
 
 // PublishLog params
-// 	@context: *gin.Context
-// 	@status: int
-// 	@payload: interface
-// 	@msg: []string
+//	@context: *gin.Context
+//	@status: int
+//	@payload: interface
+//	@msg: []string
 //	@return error
 func PublishLog(context *gin.Context, status int, payload interface{}, msg ...string) error {
-	requestBody, err := ioutil.ReadAll(context.Request.Body)
+	requestBody, err := io.ReadAll(context.Request.Body)
 	if err != nil {
 		log.Println("read body failed " + err.Error())
 		return nil
