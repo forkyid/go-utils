@@ -134,6 +134,7 @@ func NewServiceDiscovery(cfgs ...*Config) (*ServiceDiscovery, error) {
 func InitRegistrar(serviceNames ...string) *Registrar {
 	if Instance == nil {
 		Instance = &Registrar{
+			mapExist:  make(map[string]bool, 0),
 			SRegistry: make(map[string]*ServiceRegistry, 0),
 		}
 	}
