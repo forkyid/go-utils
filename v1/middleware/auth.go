@@ -47,12 +47,12 @@ func getBanStatus(ctx *gin.Context, encMemberID string) (status BanStatus, err e
 	reqBodyJson, _ := json.Marshal(reqBody)
 
 	reqCount := uint64(0)
-	host := sd.Instance.GetService("api-report").GetHost(&reqCount, os.Getenv("API_ORIGIN_URL")+"/report") + "/v1/resource/bans/status"
+	host := sd.Instance.GetService(os.Getenv("GET_BAN_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_BAN_STATUS_FALLBACK_BASE_URL")) + os.Getenv("GET_BAN_STATUS_PATH")
 	req := rest.Request{
 		URL:    host,
 		Method: http.MethodPost,
 		Headers: map[string]string{
-			"Authorization": auth.GenerateBasicAuth(os.Getenv("BASIC_AUTH_API_REPORT_USERNAME"), os.Getenv("BASIC_AUTH_API_REPORT_PASSWORD")),
+			"Authorization": auth.GenerateBasicAuth(os.Getenv("GET_BAN_STATUS_BASIC_AUTH_USERNAME"), os.Getenv("GET_BAN_STATUS_BASIC_AUTH_PASSWORD")),
 			"X-Api-Caller":  os.Getenv("SERVICE_NAME") + ctx.Request.URL.Path,
 		},
 		Body: strings.NewReader(string(reqBodyJson)),
@@ -86,13 +86,13 @@ func getSuspendStatus(ctx *gin.Context, encMemberID string) (resp SuspendStatus,
 	reqBodyJson, _ := json.Marshal(reqBody)
 
 	reqCount := uint64(0)
-	host := sd.Instance.GetService("api-report").GetHost(&reqCount, os.Getenv("API_ORIGIN_URL")+"/report") + "/v1/resource/suspensions"
+	host := sd.Instance.GetService(os.Getenv("GET_SUSPEND_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_SUSPEND_STATUS_FALLBACK_BASE_URL")) + os.Getenv("GET_SUSPEND_STATUS_PATH")
 	req := rest.Request{
 		URL:    host,
 		Method: http.MethodPost,
 		Body:   bytes.NewReader(reqBodyJson),
 		Headers: map[string]string{
-			"Authorization": auth.GenerateBasicAuth(os.Getenv("BASIC_AUTH_API_REPORT_USERNAME"), os.Getenv("BASIC_AUTH_API_REPORT_PASSWORD")),
+			"Authorization": auth.GenerateBasicAuth(os.Getenv("GET_SUSPEND_STATUS_BASIC_AUTH_USERNAME"), os.Getenv("GET_SUSPEND_STATUS_BASIC_AUTH_PASSWORD")),
 			"X-Api-Caller":  os.Getenv("SERVICE_NAME") + ctx.Request.URL.Path,
 		},
 	}
@@ -142,11 +142,11 @@ func checkAuthToken(ctx *gin.Context, bearerToken string) (resp rest.Response, e
 	payload := map[string]string{"access_token": bearerToken}
 	payloadJson, _ := json.Marshal(payload)
 
-	apiUsername := os.Getenv("BASIC_AUTH_OAUTH2_SERVER_USERNAME")
-	apiPassword := os.Getenv("BASIC_AUTH_OAUTH2_SERVER_PASSWORD")
+	apiUsername := os.Getenv("CHECK_AUTH_TOKEN_BASIC_AUTH_USERNAME")
+	apiPassword := os.Getenv("CHECK_AUTH_TOKEN_BASIC_AUTH_PASSWORD")
 
 	reqCount := uint64(0)
-	host := sd.Instance.GetService("oauth2-server").GetHost(&reqCount, os.Getenv("API_ORIGIN_URL")+"/oauth") + "/v1/resource/check/token"
+	host := sd.Instance.GetService(os.Getenv("CHECK_AUTH_TOKEN_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("CHECK_AUTH_TOKEN_FALLBACK_BASE_URL")) + os.Getenv("CHECK_AUTH_TOKEN_PATH")
 	req := rest.Request{
 		URL:    host,
 		Method: http.MethodPost,
@@ -269,7 +269,7 @@ func (mid *Middleware) AgeAuth(minAge int) gin.HandlerFunc {
 
 func getAccStatus(ctx *gin.Context) (isOnHold bool, err error) {
 	reqCount := uint64(0)
-	host := sd.Instance.GetService("api-gift-shop").GetHost(&reqCount, os.Getenv("API_ORIGIN_URL")+"/gs") + "/v1/accounts/status"
+	host := sd.Instance.GetService(os.Getenv("GET_ACCOUNT_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_ACCOUNT_STATUS_FALLBACK_BASE_URL")) + os.Getenv("GET_ACCOUNT_STATUS_PATH")
 	req := rest.Request{
 		URL:    host,
 		Method: http.MethodGet,
