@@ -47,7 +47,7 @@ func getBanStatus(ctx *gin.Context, encMemberID string) (status BanStatus, err e
 	reqBodyJson, _ := json.Marshal(reqBody)
 
 	reqCount := uint64(0)
-	host := sd.Instance.GetService(os.Getenv("GET_BAN_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_BAN_STATUS_FALLBACK_BASE_URL")) + os.Getenv("GET_BAN_STATUS_PATH")
+	host := sd.Instance.GetService(os.Getenv("GET_BAN_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_BAN_STATUS_FALLBACK_BASE_URL")) + "/" + os.Getenv("GET_BAN_STATUS_PATH")
 	req := rest.Request{
 		URL:    host,
 		Method: http.MethodPost,
@@ -86,7 +86,7 @@ func getSuspendStatus(ctx *gin.Context, encMemberID string) (resp SuspendStatus,
 	reqBodyJson, _ := json.Marshal(reqBody)
 
 	reqCount := uint64(0)
-	host := sd.Instance.GetService(os.Getenv("GET_SUSPEND_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_SUSPEND_STATUS_FALLBACK_BASE_URL")) + os.Getenv("GET_SUSPEND_STATUS_PATH")
+	host := sd.Instance.GetService(os.Getenv("GET_SUSPEND_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_SUSPEND_STATUS_FALLBACK_BASE_URL")) + "/" + os.Getenv("GET_SUSPEND_STATUS_PATH")
 	req := rest.Request{
 		URL:    host,
 		Method: http.MethodPost,
@@ -146,7 +146,7 @@ func checkAuthToken(ctx *gin.Context, bearerToken string) (resp rest.Response, e
 	apiPassword := os.Getenv("CHECK_AUTH_TOKEN_BASIC_AUTH_PASSWORD")
 
 	reqCount := uint64(0)
-	host := sd.Instance.GetService(os.Getenv("CHECK_AUTH_TOKEN_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("CHECK_AUTH_TOKEN_FALLBACK_BASE_URL")) + os.Getenv("CHECK_AUTH_TOKEN_PATH")
+	host := sd.Instance.GetService(os.Getenv("CHECK_AUTH_TOKEN_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("CHECK_AUTH_TOKEN_FALLBACK_BASE_URL")) + "/" + os.Getenv("CHECK_AUTH_TOKEN_PATH")
 	req := rest.Request{
 		URL:    host,
 		Method: http.MethodPost,
@@ -269,7 +269,7 @@ func (mid *Middleware) AgeAuth(minAge int) gin.HandlerFunc {
 
 func getAccStatus(ctx *gin.Context) (isOnHold bool, err error) {
 	reqCount := uint64(0)
-	host := sd.Instance.GetService(os.Getenv("GET_ACCOUNT_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_ACCOUNT_STATUS_FALLBACK_BASE_URL")) + os.Getenv("GET_ACCOUNT_STATUS_PATH")
+	host := sd.Instance.GetService(os.Getenv("GET_ACCOUNT_STATUS_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_ACCOUNT_STATUS_FALLBACK_BASE_URL")) + "/" + os.Getenv("GET_ACCOUNT_STATUS_PATH")
 	req := rest.Request{
 		URL:    host,
 		Method: http.MethodGet,
