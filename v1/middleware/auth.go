@@ -15,6 +15,7 @@ import (
 	"github.com/forkyid/go-utils/v1/rest"
 	"github.com/forkyid/go-utils/v1/util/age"
 	"github.com/forkyid/go-utils/v1/util/auth"
+	"github.com/forkyid/go-utils/v1/util/sd"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 )
@@ -45,13 +46,13 @@ func getBanStatus(ctx *gin.Context, encMemberID string) (status BanStatus, err e
 	}
 	reqBodyJson, _ := json.Marshal(reqBody)
 
-	apiUsername := os.Getenv("BASIC_AUTH_API_REPORT_USERNAME")
-	apiPassword := os.Getenv("BASIC_AUTH_API_REPORT_PASSWORD")
+	reqCount := uint64(0)
+	host := sd.Instance.GetService("api-report").GetHost(&reqCount, os.Getenv("API_ORIGIN_URL")+"/report") + "/v1/resource/bans/status"
 	req := rest.Request{
-		URL:    fmt.Sprintf("%v/report/v1/resource/bans/status", os.Getenv("API_ORIGIN_URL")),
+		URL:    host,
 		Method: http.MethodPost,
 		Headers: map[string]string{
-			"Authorization": auth.GenerateBasicAuth(apiUsername, apiPassword),
+			"Authorization": auth.GenerateBasicAuth(os.Getenv("BASIC_AUTH_API_REPORT_USERNAME"), os.Getenv("BASIC_AUTH_API_REPORT_PASSWORD")),
 			"X-Api-Caller":  os.Getenv("SERVICE_NAME") + ctx.Request.URL.Path,
 		},
 		Body: strings.NewReader(string(reqBodyJson)),
@@ -84,14 +85,14 @@ func getSuspendStatus(ctx *gin.Context, encMemberID string) (resp SuspendStatus,
 	}
 	reqBodyJson, _ := json.Marshal(reqBody)
 
-	apiUsername := os.Getenv("BASIC_AUTH_API_REPORT_USERNAME")
-	apiPassword := os.Getenv("BASIC_AUTH_API_REPORT_PASSWORD")
+	reqCount := uint64(0)
+	host := sd.Instance.GetService("api-report").GetHost(&reqCount, os.Getenv("API_ORIGIN_URL")+"/report") + "/v1/resource/suspensions"
 	req := rest.Request{
-		URL:    fmt.Sprintf("%v/report/v1/resource/suspensions", os.Getenv("API_ORIGIN_URL")),
+		URL:    host,
 		Method: http.MethodPost,
 		Body:   bytes.NewReader(reqBodyJson),
 		Headers: map[string]string{
-			"Authorization": auth.GenerateBasicAuth(apiUsername, apiPassword),
+			"Authorization": auth.GenerateBasicAuth(os.Getenv("BASIC_AUTH_API_REPORT_USERNAME"), os.Getenv("BASIC_AUTH_API_REPORT_PASSWORD")),
 			"X-Api-Caller":  os.Getenv("SERVICE_NAME") + ctx.Request.URL.Path,
 		},
 	}
@@ -144,8 +145,10 @@ func checkAuthToken(ctx *gin.Context, bearerToken string) (resp rest.Response, e
 	apiUsername := os.Getenv("BASIC_AUTH_OAUTH2_SERVER_USERNAME")
 	apiPassword := os.Getenv("BASIC_AUTH_OAUTH2_SERVER_PASSWORD")
 
+	reqCount := uint64(0)
+	host := sd.Instance.GetService("oauth2-server").GetHost(&reqCount, os.Getenv("API_ORIGIN_URL")+"/oauth") + "/v1/resource/check/token"
 	req := rest.Request{
-		URL:    fmt.Sprintf("%v/oauth/v1/resource/check/token", os.Getenv("API_ORIGIN_URL")), // TODO: update path using internal LB
+		URL:    host,
 		Method: http.MethodPost,
 		Headers: map[string]string{
 			"Authorization": auth.GenerateBasicAuth(apiUsername, apiPassword),
@@ -265,8 +268,10 @@ func (mid *Middleware) AgeAuth(minAge int) gin.HandlerFunc {
 }
 
 func getAccStatus(ctx *gin.Context) (isOnHold bool, err error) {
+	reqCount := uint64(0)
+	host := sd.Instance.GetService("api-gift-shop").GetHost(&reqCount, os.Getenv("API_ORIGIN_URL")+"/gs") + "/v1/accounts/status"
 	req := rest.Request{
-		URL:    fmt.Sprintf("%v/gs/v1/accounts/status", os.Getenv("API_ORIGIN_URL")),
+		URL:    host,
 		Method: http.MethodGet,
 		Headers: map[string]string{
 			"Authorization": ctx.GetHeader("Authorization")},
