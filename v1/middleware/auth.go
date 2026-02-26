@@ -8,10 +8,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/forkyid/go-utils/v1/aes"
 	"github.com/forkyid/go-utils/v1/jwt"
 	"github.com/forkyid/go-utils/v1/logger"
 	"github.com/forkyid/go-utils/v1/rest"
-	"github.com/forkyid/go-utils/v1/util/age"
 	"github.com/forkyid/go-utils/v1/util/auth"
 	"github.com/forkyid/go-utils/v1/util/sd"
 	"github.com/gin-gonic/gin"
@@ -108,7 +108,7 @@ func (mid *Middleware) Auth(ctx *gin.Context) {
 }
 
 // AgeAuth validates whether user already above the age requirement or not.
-func (mid *Middleware) AgeAuth(minAge int) gin.HandlerFunc {
+func (mid *Middleware) AgeAuth(allowedAgeGroupIDs ...int) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		auth := ctx.GetHeader("Authorization")
 		if auth == "" {
@@ -123,12 +123,23 @@ func (mid *Middleware) AgeAuth(minAge int) gin.HandlerFunc {
 			return
 		}
 
-		claims, _ := jwt.ExtractClient(auth)
-		if age.Age(claims.DateOfBirth) < minAge {
-			rest.ResponseMessage(ctx, http.StatusForbidden, ErrBelowAgeRequirement.Error())
+		encAgeGroupID, err := getAgeGroup(ctx)
+		if err != nil {
+			rest.ResponseMessage(ctx, http.StatusInternalServerError).
+				Log("get age group", err)
 			ctx.Abort()
 			return
 		}
+
+		ageGroupID := aes.Decrypt(encAgeGroupID)
+		for _, allowed := range allowedAgeGroupIDs {
+			if ageGroupID == int64(allowed) {
+				ctx.Next()
+				return
+			}
+		}
+
+		ctx.Abort()
 	}
 }
 
@@ -165,6 +176,43 @@ func getAccStatus(ctx *gin.Context) (isOnHold bool, err error) {
 	if ok && status == "onhold" {
 		isOnHold = true
 	} else if !ok {
+		err = fmt.Errorf("status invalid")
+	}
+
+	return
+}
+
+func getAgeGroup(ctx *gin.Context) (encAgeGroupID string, err error) {
+	reqCount := uint64(0)
+	host := sd.Instance.GetService(os.Getenv("GET_AGE_GROUP_SERVICE_NAME")).GetHost(&reqCount, os.Getenv("GET_AGE_GROUP_FALLBACK_BASE_URL")) + "/" + os.Getenv("GET_AGE_GROUP_PATH")
+	req := rest.Request{
+		URL:    host,
+		Method: http.MethodGet,
+		Headers: map[string]string{
+			"Authorization": ctx.GetHeader("Authorization")},
+	}
+
+	respJson, code := req.Send()
+	if code != http.StatusOK {
+		err = fmt.Errorf("[%v] %v: %v", req.Method, req.URL, string(respJson))
+		return
+	}
+
+	data, err := rest.GetData(respJson)
+	if err != nil {
+		err = errors.Wrap(err, "get data")
+		return
+	}
+
+	resp := map[string]interface{}{}
+	err = json.Unmarshal(data, &resp)
+	if err != nil {
+		err = errors.Wrap(err, "unmarshal")
+		return
+	}
+
+	encAgeGroupID, ok := resp["age_group_id"].(string)
+	if !ok {
 		err = fmt.Errorf("status invalid")
 	}
 
