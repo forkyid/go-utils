@@ -139,7 +139,10 @@ func InitRegistrar(serviceNames ...string) *Registrar {
 		}
 	}
 
-	Instance.AddServices(append(serviceNames, os.Getenv("GET_ACCOUNT_STATUS_SERVICE_NAME"), os.Getenv("CHECK_AUTH_TOKEN_SERVICE_NAME"))...)
+	Instance.AddServices(append(serviceNames,
+		os.Getenv("GET_ACCOUNT_STATUS_SERVICE_NAME"),
+		os.Getenv("CHECK_AUTH_TOKEN_SERVICE_NAME"),
+		os.Getenv("GET_AGE_GROUP_SERVICE_NAME"))...)
 	return Instance
 }
 

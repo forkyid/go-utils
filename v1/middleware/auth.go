@@ -139,6 +139,7 @@ func (mid *Middleware) AgeAuth(allowedAgeGroupIDs ...int) gin.HandlerFunc {
 			}
 		}
 
+		rest.ResponseMessage(ctx, http.StatusForbidden, ErrBelowAgeRequirement.Error())
 		ctx.Abort()
 	}
 }
