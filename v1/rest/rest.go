@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/forkyid/go-utils/v1/logger"
+	nsq "github.com/forkyid/go-utils/v1/nsq"
 	publisher "github.com/forkyid/go-utils/v1/nsq/publisher/v1"
 	"github.com/forkyid/go-utils/v1/pagination"
 	uuid "github.com/forkyid/go-utils/v1/uuid"
@@ -143,7 +145,7 @@ func ResponseMessage(context *gin.Context, status int, msg ...string) ResponseRe
 	}
 	if len(msg) == 0 {
 		msg = []string{http.StatusText(status)}
-	} else if status < 200 || status > 299 {
+	} else if (status < 200 || status > 299) && !Configs.SkippedStatusCode(status) {
 		log.Println("[GOUTILS-debug]", msg[0])
 	}
 
@@ -193,7 +195,9 @@ func ResponseError(context *gin.Context, status int, detail interface{}, msg ...
 		response.Detail["error"] = det
 	}
 
-	log.Printf("[GOUTILS-debug] %+v\n", response)
+	if !Configs.SkippedStatusCode(status) {
+		log.Printf("[GOUTILS-debug] %+v\n", response)
+	}
 
 	var copied gin.Context = *context
 	PublishLog(&copied, status, response.Detail, msg[0])
@@ -242,11 +246,20 @@ func GetData(jsonBody []byte) (json.RawMessage, error) {
 //	@payload: interface
 //	@msg: []string
 //	@return error
-func PublishLog(context *gin.Context, status int, payload interface{}, msg ...string) error {
+func PublishLog(context *gin.Context, status int, payload interface{}, msg ...string) (err error) {
+	if !nsq.Configs.IsNsqActive() {
+		return
+	}
+	defer func() {
+		if nsq.Configs.ShouldLogErrors() && err != nil {
+			log.Println("[NSQ Debug]" + err.Error())
+		}
+	}()
+
 	requestBody, err := io.ReadAll(context.Request.Body)
 	if err != nil {
-		log.Println("read body failed " + err.Error())
-		return nil
+		err = fmt.Errorf("read body failed: %v", err)
+		return
 	}
 
 	contentType := context.GetHeader("Content-Type")
@@ -254,8 +267,8 @@ func PublishLog(context *gin.Context, status int, payload interface{}, msg ...st
 	if contentType == "application/json" && len(requestBody) > 0 {
 		err = json.Unmarshal(requestBody, &requestBodyInterface)
 		if err != nil {
-			log.Println("unmarshal data failed " + err.Error())
-			return nil
+			err = fmt.Errorf("unmarshal request body failed: %v", err)
+			return
 		}
 	}
 
@@ -282,8 +295,8 @@ func PublishLog(context *gin.Context, status int, payload interface{}, msg ...st
 
 	location, err := time.LoadLocation(os.Getenv("SERVER_TIMEZONE"))
 	if err != nil {
-		log.Println("failed on get location: " + err.Error())
-		return nil
+		err = fmt.Errorf("failed to get location: %v", err)
+		return
 	}
 
 	timestamp := time.Now().In(location).Unix()
@@ -293,15 +306,14 @@ func PublishLog(context *gin.Context, status int, payload interface{}, msg ...st
 		"timestamp":    timestamp,
 	})
 	if err != nil {
-		log.Println("failed on encoding json: " + err.Error())
-		return nil
+		err = fmt.Errorf("failed to marshal log data: %v", err)
+		return
 	}
 
 	err = publisher.Publish(data)
 	if err != nil {
-		log.Println("publish data failed " + err.Error())
-		return nil
+		err = fmt.Errorf("failed to publish log data: %v", err)
+		return
 	}
-
 	return nil
 }

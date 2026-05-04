@@ -60,7 +60,9 @@ func pubTypeHTTPS(topic string, data []byte) (err error) {
 		Body:     data,
 	})
 	if err != nil {
-		log.Printf("[ERROR] [NSQD] [%s] [%s] %v \n", host, err.Error(), string(data))
+		if connection.Configs.ShouldLogErrors() {
+			log.Printf("[ERROR] [NSQD] [%s] [%s] %v \n", host, err.Error(), string(data))
+		}
 		return
 	}
 	io.Copy(io.Discard, resp.Body)
