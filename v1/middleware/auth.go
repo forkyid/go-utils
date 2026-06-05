@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/forkyid/go-utils/v1/aes"
+	"github.com/forkyid/go-utils/v1/cache"
 	"github.com/forkyid/go-utils/v1/jwt"
 	"github.com/forkyid/go-utils/v1/logger"
 	"github.com/forkyid/go-utils/v1/rest"
@@ -30,6 +31,10 @@ var (
 
 type MemberStatusKey struct {
 	ID string `cache:"key"`
+}
+
+type WaitingListCache struct {
+	Status bool `json:"status"`
 }
 
 func checkAuthToken(ctx *gin.Context, bearerToken string) (resp rest.Response, err error) {
@@ -221,31 +226,19 @@ func getAgeGroup(ctx *gin.Context) (encAgeGroupID string, err error) {
 }
 
 func (m *Middleware) CheckWaitingStatus(ctx *gin.Context) {
-	if err := m.elastic.WaitForYellowStatus("1s"); err != nil {
-		logger.Errorf(ctx, "wait for yellow status", err)
+	if !cache.IsCacheConnected() {
+		logger.Errorf(ctx, "cache is not connected", ErrConnectionFailed)
 		return
 	}
 
-	result, err := m.elastic.Get().
-		Index("waiting-list").
-		Id("status").
-		Do(ctx)
+	var waitingList WaitingListCache
+	err := cache.GetUnmarshal("waiting-list", &waitingList)
 	if err != nil {
-		logger.Errorf(ctx, "get waiting list status", err)
+		logger.Errorf(ctx, "get unmarshal", err)
 		return
 	}
 
-	resultStruct := map[string]bool{}
-
-	if !result.Found {
-		logger.Errorf(ctx, "waiting list status not found", err)
-		return
-	}
-
-	json.Unmarshal(result.Source, &resultStruct)
-	isWait := resultStruct["status"]
-
-	if isWait {
+	if waitingList.Status {
 		rest.ResponseMessage(ctx, http.StatusServiceUnavailable)
 		ctx.Abort()
 	}
