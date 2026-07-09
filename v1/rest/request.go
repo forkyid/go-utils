@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"io"
 	"io/ioutil"
 	"log"
@@ -39,15 +40,20 @@ func ValidMethod(method string) bool {
 	}
 }
 
-// Send func
-// return []byte, int
+// Send docs
+//
+// Deprecated: use SendWithContext
 func (request *Request) Send() ([]byte, int) {
+	return request.SendWithContext(context.Background())
+}
+
+func (request *Request) SendWithContext(ctx context.Context) ([]byte, int) {
 	if !ValidMethod(request.Method) {
 		log.Println("[WARN] Unsupported method supplied, use one of constants provided by http package (e.g. http.MethodGet)")
 		return nil, -1
 	}
 
-	req, _ := http.NewRequest(request.Method, request.URL, request.Body)
+	req, _ := http.NewRequestWithContext(ctx, request.Method, request.URL, request.Body)
 
 	for k, v := range request.Headers {
 		req.Header.Set(k, v)

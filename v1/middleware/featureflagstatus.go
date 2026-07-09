@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -25,7 +26,7 @@ type FeatureFlagStatus struct {
 // CheckFeatureFlagStatus checks feature flag status by key and abort if status is not enabled.
 func (mid *Middleware) CheckFeatureFlagStatus(key string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		status, err := getFeatureFlagStatus(key)
+		status, err := getFeatureFlagStatus(ctx, key)
 		if err != nil {
 			rest.ResponseMessage(ctx, http.StatusInternalServerError).Log("get feature flag status", err)
 			ctx.Abort()
@@ -48,13 +49,13 @@ func (mid *Middleware) CheckFeatureFlagStatus(key string) gin.HandlerFunc {
 }
 
 // getFeatureFlagStatus gets feature flag status by its key.
-func getFeatureFlagStatus(key string) (status FeatureFlagStatus, err error) {
+func getFeatureFlagStatus(ctx context.Context, key string) (status FeatureFlagStatus, err error) {
 	req := rest.Request{
 		URL:    fmt.Sprintf("%v/flag/v1/check?key=%v", os.Getenv("API_ORIGIN_URL"), key),
 		Method: http.MethodGet,
 	}
 
-	body, code := req.Send()
+	body, code := req.SendWithContext(ctx)
 	if code != http.StatusOK {
 		err = fmt.Errorf("[%v] %v: %v", req.Method, req.URL, string(body))
 		return
