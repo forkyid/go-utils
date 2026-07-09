@@ -58,7 +58,7 @@ func checkAuthToken(ctx *gin.Context, bearerToken string) (resp rest.Response, e
 		Body: bytes.NewReader(payloadJson),
 	}
 
-	respJson, statusCode := req.Send()
+	respJson, statusCode := req.SendWithContext(ctx)
 	err = errors.Wrap(json.Unmarshal(respJson, &resp), "unmarshal ")
 	resp.Status = statusCode
 
@@ -159,7 +159,7 @@ func getAccStatus(ctx *gin.Context) (isOnHold bool, err error) {
 			"Authorization": ctx.GetHeader("Authorization")},
 	}
 
-	respJson, code := req.Send()
+	respJson, code := req.SendWithContext(ctx)
 	if code != http.StatusOK {
 		err = fmt.Errorf("[%v] %v: %v", req.Method, req.URL, string(respJson))
 		return
@@ -198,7 +198,7 @@ func getAgeGroup(ctx *gin.Context) (encAgeGroupID string, err error) {
 			"Authorization": ctx.GetHeader("Authorization")},
 	}
 
-	respJson, code := req.Send()
+	respJson, code := req.SendWithContext(ctx)
 	if code != http.StatusOK {
 		err = fmt.Errorf("[%v] %v: %v", req.Method, req.URL, string(respJson))
 		return
