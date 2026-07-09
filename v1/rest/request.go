@@ -40,8 +40,6 @@ func ValidMethod(method string) bool {
 	}
 }
 
-// Send docs
-//
 // Deprecated: use SendWithContext
 func (request *Request) Send() ([]byte, int) {
 	return request.SendWithContext(context.Background())
