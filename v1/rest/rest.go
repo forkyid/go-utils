@@ -22,7 +22,6 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// Response types
 type Response struct {
 	Result  interface{}       `json:"result,omitempty"`
 	Error   string            `json:"error,omitempty"`
@@ -31,22 +30,12 @@ type Response struct {
 	Status  int               `json:"status,omitempty"`
 }
 
-// ResponsePaginationResult types
 type ResponsePaginationResult struct {
-	Data      interface{} `json:"data"`
-	TotalData int         `json:"total_data"`
-	Page      int         `json:"page"`
-	TotalPage int         `json:"total_page"`
+	Result  interface{}                 `json:"result,omitempty"`
+	Paging  pagination.PaginationResult `json:"paging,omitempty"`
+	Message string                      `json:"message,omitempty"`
 }
 
-// ResponsePaginationParams types
-type ResponsePaginationParams struct {
-	Data       interface{}
-	TotalData  int
-	Pagination *pagination.Pagination
-}
-
-// ResponseResult types
 type ResponseResult struct {
 	Context *gin.Context
 	UUID    string
@@ -100,36 +89,19 @@ func ResponseData(context *gin.Context, status int, payload interface{}, msg ...
 	return ResponseResult{context, uuid.GetUUID()}
 }
 
-// ResponsePagination params
-// @context: *gin.Context
-// @status: int
-// @params: ResponsePaginationParams
-// return ResponseResult
-func ResponsePagination(context *gin.Context, status int, params ResponsePaginationParams) ResponseResult {
-	msg := http.StatusText(status)
-
-	if params.Pagination == nil {
-		log.Println("proceeding with default pagination value")
-		params.Pagination = &pagination.Pagination{}
-		params.Pagination.Paginate()
+func ResponsePagination(context *gin.Context, status int, pgn pagination.PaginationResult, payload interface{}, msg ...string) ResponseResult {
+	if len(msg) == 0 {
+		msg = []string{http.StatusText(status)}
 	}
 
-	if params.TotalData == 0 {
-		log.Println("proceeding with 0 total_data...")
-	}
-
-	response := Response{
-		Result: ResponsePaginationResult{
-			Data:      params.Data,
-			TotalData: params.TotalData,
-			Page:      params.Pagination.Page,
-			TotalPage: params.TotalData / params.Pagination.Limit,
-		},
-		Message: msg,
+	response := ResponsePaginationResult{
+		Result:  payload,
+		Paging:  pgn,
+		Message: msg[0],
 	}
 
 	var copied gin.Context = *context
-	PublishLog(&copied, status, params.Data, msg)
+	PublishLog(&copied, status, payload, msg[0])
 	context.JSON(status, response)
 	return ResponseResult{context, uuid.GetUUID()}
 }
@@ -241,6 +213,7 @@ func GetData(jsonBody []byte) (json.RawMessage, error) {
 }
 
 // PublishLog params
+//
 //	@context: *gin.Context
 //	@status: int
 //	@payload: interface
