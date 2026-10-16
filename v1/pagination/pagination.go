@@ -1,44 +1,201 @@
 package pagination
 
-import "math"
+import (
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+	"sync"
 
-type Paginator interface {
-	Paginate()
-}
+	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
+)
 
 const (
-	DefaultPage  = 1
 	DefaultLimit = 10
 	MaximumLimit = 100
 )
 
-// Paginate params
-func (p *Pagination) Paginate() {
-	p.ValidatePagination()
-	p.Offset = p.Limit * (p.Page - 1)
-}
-
-// SetToDefault will set to it's default value
-func (p *Pagination) SetToDefault() {
-	p.Page, p.Limit = DefaultPage, DefaultLimit
-}
-
-// ValidatePagination will validate pagination's value
-func (p *Pagination) ValidatePagination() {
-	if p.Page < 1 || p.Limit < 1 {
-		p.SetToDefault()
+func getValues(orders SortOrderArray, entity any, value reflect.Value) ([]Value, error) {
+	schema, err := schema.Parse(&entity, &sync.Map{}, schema.NamingStrategy{})
+	if err != nil {
+		return nil, errors.New("failed to parse struct schema")
 	}
+
+	mapName := map[string]string{}
+	for _, field := range schema.Fields {
+		mapName[field.DBName] = field.Name
+	}
+
+	values := []Value{}
+	for _, order := range orders {
+		keys := strings.Split(order.Key, ".")
+		value := value.FieldByName(mapName[keys[len(keys)-1]])
+		if !value.IsValid() {
+			return nil, errors.New(fmt.Sprintf("not found such field: %s", keys[len(keys)-1]))
+		}
+
+		v, err := parseValue(value.Interface())
+		if err != nil {
+			return nil, err
+		}
+
+		values = append(values, v)
+	}
+
+	return values, nil
+}
+
+func reverse(val *reflect.Value) {
+	if val.Len() == 1 {
+		return
+	}
+
+	fnc := reflect.Swapper(val.Interface())
+	for i := 0; i < val.Len()/2; i++ {
+		fnc(i, val.Len()-1-i)
+	}
+}
+
+func getCursor(orders SortOrderArray, entities any, value reflect.Value, isBackward bool) (*Cursor, error) {
+	val, err := getValues(orders, entities, value)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewCursor(orders, isBackward, val)
+}
+
+func GetResult[T any](pgn Pagination, entities T) (PaginationResult, error) {
+	res := PaginationResult{}
+
+	if !pgn.IsCursor() {
+		res.Limit = pgn.Limit
+		res.Page = &pgn.Page
+
+		return res, nil
+	}
+
+	if pgn.CursorEncoded == "" {
+		pgn.CursorEncoded = pgn.Cursor.Encode()
+	}
+
+	val := reflect.ValueOf(entities)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Slice {
+		return res, errors.New("expected a slice")
+	}
+
+	if !pgn.Cursor.IsEmpty() && val.Len() > pgn.Limit {
+		val.Set(val.Slice(0, val.Len()-1))
+		if pgn.Cursor != nil && pgn.Cursor.isBackward {
+			reverse(&val)
+		}
+
+		next, err := getCursor(pgn.Cursor.orders, entities, val.Index(val.Len()-1), false)
+		if err != nil {
+			return PaginationResult{}, err
+		}
+
+		prev, err := getCursor(pgn.Cursor.orders, entities, val.Index(0), true)
+		if err != nil {
+			return PaginationResult{}, err
+		}
+
+		res.Limit = pgn.Limit
+
+		res.NextCursor = next.Encode()
+		res.SelfCursor = pgn.CursorEncoded
+		res.PrevCursor = prev.Encode()
+		return res, err
+	}
+
+	res.SelfCursor = pgn.CursorEncoded
+	if pgn.Cursor.IsEmpty() || pgn.Cursor.isBackward {
+		if pgn.Cursor.IsEmpty() && val.Len() > pgn.Limit {
+			val.Set(val.Slice(0, val.Len()-1))
+		}
+
+		next, err := getCursor(pgn.Cursor.orders, entities, val.Index(val.Len()-1), false)
+		if err != nil {
+			return PaginationResult{}, err
+		}
+
+		res.NextCursor = next.Encode()
+	} else {
+		prev, err := getCursor(pgn.Cursor.orders, entities, val.Index(0), true)
+		if err != nil {
+			return PaginationResult{}, err
+		}
+
+		res.PrevCursor = prev.Encode()
+	}
+
+	return res, nil
+}
+
+type PaginateOption struct {
+	// UseOffset forces to use offset based pagination instead.
+	UseOffset bool
+}
+
+// Paginate processes the pagination provided.
+func (p *Pagination) Paginate(opts ...func(*PaginateOption)) (err error) {
+	option := PaginateOption{}
+	for _, opt := range opts {
+		opt(&option)
+	}
+
+	if p.Limit <= 0 {
+		p.Limit = DefaultLimit
+	}
+
 	if p.Limit > MaximumLimit {
 		p.Limit = MaximumLimit
 	}
-}
 
-// SetTotalPage will set TotalPage value
-func (p *Pagination) SetTotalPage() {
-	p.ValidatePagination()
-	if p.TotalData > 0 && p.TotalData < p.Limit {
-		p.Limit = p.TotalData
+	if p.Page > 0 || option.UseOffset {
+		if p.Page < 1 {
+			p.Page = 1
+		}
+
+		p.Offset = p.Limit * (p.Page - 1)
+		return
 	}
 
-	p.TotalPage = int(math.Ceil(float64(p.TotalData) / float64(p.Limit)))
+	if p.CursorEncoded != "" {
+		p.Cursor, err = Decode(p.CursorEncoded)
+	} else if p.Cursor == nil {
+		p.Cursor = &Cursor{}
+	}
+
+	return
+}
+
+func (p Pagination) IsCursor() bool {
+	if p.Cursor != nil {
+		return true
+	}
+	return false
+}
+
+// Query applies pagination conditions to GORM query with specified ORDER BY clause.
+//
+// Defaults to cursor based pagination if there is no pagination options provided.
+//
+//	pgn.Query(db, "created_at DESC, id DESC").Find(&users)
+func (p *Pagination) Query(tx *gorm.DB, order string) *gorm.DB {
+	if p.Cursor != nil {
+		tx = p.Cursor.Query(tx, order).Limit(p.Limit + 1)
+		return tx
+	}
+
+	if p.Page > 0 {
+		return tx.Order(order).Limit(p.Limit).Offset(p.Offset)
+	}
+
+	return tx.Order(order).Limit(p.Limit + 1)
 }
