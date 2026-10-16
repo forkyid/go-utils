@@ -76,6 +76,10 @@ func GetResult[T any](pgn Pagination, entities T) (PaginationResult, error) {
 		return res, nil
 	}
 
+	if pgn.CursorEncoded == "" {
+		pgn.CursorEncoded = pgn.Cursor.Encode()
+	}
+
 	val := reflect.ValueOf(entities)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
@@ -153,11 +157,6 @@ func (p *Pagination) Paginate(opts ...func(*PaginateOption)) (err error) {
 		p.Limit = MaximumLimit
 	}
 
-	if p.CursorEncoded != "" {
-		p.Cursor, err = Decode(p.CursorEncoded)
-		return
-	}
-
 	if p.Page > 0 || option.UseOffset {
 		if p.Page < 1 {
 			p.Page = 1
@@ -167,7 +166,12 @@ func (p *Pagination) Paginate(opts ...func(*PaginateOption)) (err error) {
 		return
 	}
 
-	p.Cursor = &Cursor{}
+	if p.CursorEncoded != "" {
+		p.Cursor, err = Decode(p.CursorEncoded)
+	} else if p.Cursor == nil {
+		p.Cursor = &Cursor{}
+	}
+
 	return
 }
 
