@@ -76,7 +76,7 @@ func GetResult[T any](pgn Pagination, entities T) (PaginationResult, error) {
 		return res, nil
 	}
 
-	if pgn.CursorEncoded == "" {
+	if pgn.CursorEncoded == "" && !pgn.Cursor.IsEmpty() {
 		pgn.CursorEncoded = pgn.Cursor.Encode()
 	}
 
@@ -87,6 +87,11 @@ func GetResult[T any](pgn Pagination, entities T) (PaginationResult, error) {
 
 	if val.Kind() != reflect.Slice {
 		return res, errors.New("expected a slice")
+	}
+
+	res.Limit = pgn.Limit
+	if val.Len() == 0 {
+		return res, nil
 	}
 
 	if !pgn.Cursor.IsEmpty() && val.Len() > pgn.Limit {
@@ -105,8 +110,6 @@ func GetResult[T any](pgn Pagination, entities T) (PaginationResult, error) {
 			return PaginationResult{}, err
 		}
 
-		res.Limit = pgn.Limit
-
 		res.NextCursor = next.Encode()
 		res.SelfCursor = pgn.CursorEncoded
 		res.PrevCursor = prev.Encode()
@@ -115,7 +118,11 @@ func GetResult[T any](pgn Pagination, entities T) (PaginationResult, error) {
 
 	res.SelfCursor = pgn.CursorEncoded
 	if pgn.Cursor.IsEmpty() || pgn.Cursor.isBackward {
-		if pgn.Cursor.IsEmpty() && val.Len() > pgn.Limit {
+		if pgn.Cursor.IsEmpty() {
+			if val.Len() <= pgn.Limit {
+				return res, nil
+			}
+
 			val.Set(val.Slice(0, val.Len()-1))
 		}
 
